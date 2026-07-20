@@ -71,6 +71,7 @@ public class TurretAutoAlignOpmode extends OpMode {
         telemetry.addData("Tuning P", "%.5f (D-Pad L/R)", turret.getkP());
         telemetry.addData("Tuning D","%.5f (D-Pad U/D)", turret.getkD());
         telemetry.addData("Step Sizes","%.5f (B Button)", stepSizes[stepIndex]);
+        telemetry.addData("Step", stepIndex);
 
 
         telemetry.update();
