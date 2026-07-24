@@ -10,7 +10,7 @@ import com.qualcomm.robotcore.util.Range;
 
 public class TurretMechanism {
 
-    private DcMotorEx rotateMotor;
+    public DcMotorEx rotateMotor;
     private double kP = 0.0001;
     private double kD = 0.0000;
     private double goalX = 0;

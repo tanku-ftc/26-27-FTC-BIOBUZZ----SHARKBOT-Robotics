@@ -4,6 +4,7 @@ import com.qualcomm.hardware.limelightvision.LLResult;
 import com.qualcomm.hardware.limelightvision.Limelight3A;
 import com.qualcomm.robotcore.eventloop.opmode.OpMode;
 import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
+import com.qualcomm.robotcore.hardware.DcMotorEx;
 
 import org.firstinspires.ftc.teamcode.Mechanisms.TurretMechanism;
 
@@ -12,6 +13,13 @@ public class TurretAutoAlignOpmode extends OpMode {
 
     private Limelight3A limelight3A;
     private TurretMechanism turret = new TurretMechanism();
+
+    LLResult llResult;
+    private double x = llResult.getTx();
+    private double y = llResult.getTy();
+    private double a = llResult.getTa();
+
+
 
     double[] stepSizes = {0.1, 0.01, 0.001, 0.0001, 0.00001};
       // Index to select the current step size from the array.
@@ -58,10 +66,12 @@ public class TurretAutoAlignOpmode extends OpMode {
             turret.setkD(turret.getkD() - stepSizes[stepIndex]);
         }
 
+
+
         if (llresult != null && llresult.isValid()) {
-            telemetry.addData("tx", llresult.getTx());
-            telemetry.addData("ty", llresult.getTy());
-            telemetry.addData("ta", llresult.getTa());
+            telemetry.addData("tx", x);
+            telemetry.addData("ty", y);
+            telemetry.addData("ta", a);
             telemetry.addLine("Target detected");
         } else {
             telemetry.addLine("No tag detected");
