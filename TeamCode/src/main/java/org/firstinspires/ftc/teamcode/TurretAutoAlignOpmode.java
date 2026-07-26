@@ -5,6 +5,7 @@ import com.qualcomm.hardware.limelightvision.Limelight3A;
 import com.qualcomm.robotcore.eventloop.opmode.OpMode;
 import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
 import com.qualcomm.robotcore.hardware.DcMotorEx;
+import com.qualcomm.robotcore.hardware.DigitalChannel;
 
 import org.firstinspires.ftc.teamcode.Mechanisms.TurretMechanism;
 
@@ -14,10 +15,12 @@ public class TurretAutoAlignOpmode extends OpMode {
     private Limelight3A limelight3A;
     private TurretMechanism turret = new TurretMechanism();
 
-    LLResult llResult;
-    private double x = llResult.getTx();
-    private double y = llResult.getTy();
-    private double a = llResult.getTa();
+    private DigitalChannel mgswitch;
+
+    public boolean isMagSwitchActive() {
+        return mgswitch.getState();
+    }
+
 
 
 
@@ -28,6 +31,8 @@ public class TurretAutoAlignOpmode extends OpMode {
     @Override
     public void init() {
         limelight3A = hardwareMap.get(Limelight3A.class, "limelight");
+        mgswitch = hardwareMap.get(DigitalChannel.class, "magneticLimitSwitch");
+        mgswitch.setMode(DigitalChannel.Mode.INPUT);
         limelight3A.pipelineSwitch(8);
         turret.init(hardwareMap);
 
@@ -42,6 +47,7 @@ public class TurretAutoAlignOpmode extends OpMode {
 
     @Override
     public void loop() {
+
         LLResult llresult = limelight3A.getLatestResult();
 
         turret.update(llresult);
@@ -66,23 +72,37 @@ public class TurretAutoAlignOpmode extends OpMode {
             turret.setkD(turret.getkD() - stepSizes[stepIndex]);
         }
 
+        if (gamepad1.aWasPressed()) {
+            turret.RIGHT_LIMIT+=10;
+        }
+        if (gamepad1.yWasPressed()) {
+            turret.LEFT_LIMIT -=10;
+        }
+
+        if (isMagSwitchActive()) {
+            turret.rotateMotor.setMode(
+                    DcMotorEx.RunMode.RESET_ENCODERS);
+        }
+
 
 
         if (llresult != null && llresult.isValid()) {
-            telemetry.addData("tx", x);
-            telemetry.addData("ty", y);
-            telemetry.addData("ta", a);
+            telemetry.addData("tx",llresult.getTx());
+            telemetry.addData("ty",llresult.getTy());
+            telemetry.addData("ta",llresult.getTa());
             telemetry.addLine("Target detected");
         } else {
             telemetry.addLine("No tag detected");
         }
-
         telemetry.addLine("---------------------------------------");
         telemetry.addData("Tuning P", "%.5f (D-Pad L/R)", turret.getkP());
         telemetry.addData("Tuning D","%.5f (D-Pad U/D)", turret.getkD());
         telemetry.addData("Step Sizes","%.5f (B Button)", stepSizes[stepIndex]);
         telemetry.addData("Step", stepIndex);
-
+        telemetry.addLine("--------------------------------------------------");
+        telemetry.addData("Turret Encoder", turret.rotateMotor.getCurrentPosition());
+        telemetry.addData("Left Limit", turret.LEFT_LIMIT);
+        telemetry.addData("Right Limit", turret.RIGHT_LIMIT);
 
         telemetry.update();
     }
