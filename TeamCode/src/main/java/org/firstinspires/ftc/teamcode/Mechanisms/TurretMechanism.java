@@ -11,14 +11,14 @@ public class TurretMechanism {
 
     public DcMotorEx rotateMotor;
 
-    private double  kP = 0.0001;
-    private double kD = 0.0000;
+    private double  kP = 0.03031;
+    private double kD = 0.01001;
 
     private final double goalX = 0;
     private  double lastError = 0;
-    private final double angleTolerance = 0.2;
+    private final double angleTolerance = 3;
 
-    private final double MAX_POWER = 0.5;
+    private final double MAX_POWER = 0.8;
 
     private double power = 0.0;
 
@@ -27,6 +27,9 @@ public class TurretMechanism {
 
     public int LEFT_LIMIT = -1700;
     public int RIGHT_LIMIT = 1700;
+
+    private double filteredTx = 0;
+    private static final double TX_FILTER = 0.5;
 
     public void init(HardwareMap hwMap) {
 
@@ -69,24 +72,34 @@ public class TurretMechanism {
 
         if (llresult == null || !llresult.isValid()) {
             rotateMotor.setPower(0);
+            filteredTx = 0;
             lastError = 0;
             return;
         }
 
-        double error = goalX - llresult.getTx();
+        filteredTx = TX_FILTER * llresult.getTx() + (1.0 - TX_FILTER) * filteredTx;
+
+        double error = goalX - filteredTx;
 
         double pTerm = error * kP;
 
         double dTerm = 0;
 
-        if (deltaTime > 0) {
+        if (deltaTime > 0.01) {
             dTerm = ((error - lastError) / deltaTime) * kD;
         }
 
         if (Math.abs(error) < angleTolerance) {
             power = 0;
         } else {
-            power = Range.clip(pTerm + dTerm, -MAX_POWER, MAX_POWER);
+            double ff = 0.03 * Math.signum(error);
+
+            power = Range.clip(pTerm + dTerm + ff, -MAX_POWER, MAX_POWER);
+
+            // Minimum power to overcome friction
+            if (Math.abs(power) > 0) {
+                power = Math.copySign(Math.max(Math.abs(power), 0.08), power);
+            }
         }
 
         // Encoder limits
