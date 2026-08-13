@@ -1,6 +1,5 @@
 package org.firstinspires.ftc.teamcode;
 
-import com.pedropathing.geometry.Pose;
 import com.qualcomm.hardware.limelightvision.LLResult;
 import com.qualcomm.hardware.limelightvision.Limelight3A;
 import com.qualcomm.robotcore.eventloop.opmode.OpMode;
@@ -8,10 +7,8 @@ import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
 import com.qualcomm.robotcore.hardware.DcMotor;
 import com.qualcomm.robotcore.hardware.DcMotorEx;
 import com.qualcomm.robotcore.hardware.DigitalChannel;
-import com.pedropathing.follower.Follower;
-import org.firstinspires.ftc.teamcode.pedroPathing.Constants;
-
 import org.firstinspires.ftc.teamcode.Mechanisms.TurretMechanism;
+import com.qualcomm.robotcore.hardware.PIDFCoefficients;
 
 @TeleOp(name = "Mecanum + Turret Auto Align", group = "TeleOp")
 public class TurretAutoAlignOpmode extends OpMode {
@@ -26,9 +23,19 @@ public class TurretAutoAlignOpmode extends OpMode {
     private Limelight3A limelight3A;
     private DigitalChannel mgswitch;
 
-    private Follower follower;
+    private double CAMERA_HEIGHT_CM = 36.195;
 
-    // ================= PID =================
+    private double CAMERA_ANGLE = 8.5;
+
+    private double GOAL_HEIGHT = 74.95;
+
+    private double distanceToGoal = 0;
+
+    private long lastTagTime = 0;
+    private static final long TAG_TIMEOUT_MS = 20000; // 20 seconds
+
+
+    // ================= PD =================
     private final double[] stepSizes = {
             0.1, 0.01, 0.001, 0.0001, 0.00001
     };
@@ -58,8 +65,14 @@ public class TurretAutoAlignOpmode extends OpMode {
         intakeMotor.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
         rampMotor.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
 
-        frontRight.setDirection(DcMotor.Direction.REVERSE);
-        backRight.setDirection(DcMotor.Direction.REVERSE);
+        frontLeft.setDirection(DcMotor.Direction.REVERSE);
+        backLeft.setDirection(DcMotor.Direction.REVERSE);
+        outakeMotor.setDirection(DcMotor.Direction.REVERSE);
+
+        outakeMotor.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
+        PIDFCoefficients pidfCoefficients = new PIDFCoefficients(67, 0, 0, 25);
+        outakeMotor.setPIDFCoefficients(DcMotorEx.RunMode.RUN_USING_ENCODER, pidfCoefficients);
+
 
         // Limelight
         limelight3A = hardwareMap.get(Limelight3A.class, "limelight");
@@ -71,7 +84,6 @@ public class TurretAutoAlignOpmode extends OpMode {
 
         // Turret
         turret.init(hardwareMap);
-        follower = Constants.createFollower(hardwareMap);
 
         telemetry.addLine("Ready!");
         telemetry.update();
@@ -83,23 +95,23 @@ public class TurretAutoAlignOpmode extends OpMode {
         limelight3A.start();
     }
 
+    public double getDistance(double ty) {
+        double angleToTarget = CAMERA_ANGLE + ty;
+        double heightDifference = GOAL_HEIGHT - CAMERA_HEIGHT_CM;
+
+        return heightDifference / Math.tan(Math.toRadians(angleToTarget));
+    }
+
     @Override
     public void loop() {
 
-        follower.update();
+        LLResult llresult = limelight3A.getLatestResult();
 
-        // ================= INTAKE/RAMP/OUTAKE ===================
+        // ================= INTAKE/RAMP/TURRET STOP ===================
+
 
          double intakePower = gamepad1.left_trigger * -0.9;
          double rampPower = gamepad1.right_trigger * -0.5;
-         Pose pose = follower.getPose();
-         double robotX = pose.getX();
-         double robotY = pose.getY();
-         double distanceToGoal = Math.sqrt(Math.pow(robotX + 49, 2) + Math.pow(robotY + 49.5, 2));
-         double outakeVelocitySlope = 5.5;
-         double outakeVelocityStart = 200;
-         double outakeVelocity = ((outakeVelocitySlope * distanceToGoal) + outakeVelocityStart);
-
 
         if(gamepad1.left_trigger > 0.01) {
             intakeMotor.setPower(intakePower);
@@ -113,18 +125,19 @@ public class TurretAutoAlignOpmode extends OpMode {
             rampMotor.setPower(0);
         }
 
-       if(gamepad1.right_bumper) {
-           outakeMotor.setVelocity(outakeVelocity);
-       } else {
-           outakeMotor.setVelocity(0);
-       }
+        if (gamepad1.left_bumper) {
+            turret.rotateMotor.setPower(0);
+        } else {
+            turret.update(llresult);
+        }
+
 
 
         // ================= MECANUM DRIVE =================
 
-        double x = -gamepad1.left_stick_x;
-        double y = gamepad1.left_stick_y;
-        double turn = gamepad1.right_stick_x;
+        double x = gamepad1.left_stick_x;
+        double y = -gamepad1.left_stick_y;
+        double turn = -gamepad1.right_stick_x;
 
         double translationPower = Math.hypot(x, y);
         double translationAngle = Math.atan2(y, x);
@@ -158,11 +171,42 @@ public class TurretAutoAlignOpmode extends OpMode {
         frontRight.setPower(frontRightPower);
         backRight.setPower(backRightPower);
 
-        // ================= LIMELIGHT =================
+        // ================= LIMELIGHT/OUTAKE =================
 
-        LLResult llresult = limelight3A.getLatestResult();
-        turret.update(llresult);
+        double outakeVelocity;
 
+        if (llresult != null && llresult.isValid()) {
+
+            // Tag detected, reset timer
+            lastTagTime = System.currentTimeMillis();
+
+            // Calculate distance
+            distanceToGoal = getDistance(llresult.getTy());
+
+            // Calculate speed from distance
+            outakeVelocity = 3 * distanceToGoal + 300;
+
+        } else {
+
+            // How long since we last saw the tag?
+            long timeSinceTag = System.currentTimeMillis() - lastTagTime;
+
+            if (timeSinceTag < TAG_TIMEOUT_MS && lastTagTime != 0) {
+
+                // Keep using the last calculated distance/speed
+                outakeVelocity = 3 * distanceToGoal + 299.99959996767;
+
+            } else {
+
+                // After 20 seconds with no tag, return to Y-intercept of 20
+                outakeVelocity = 300;
+            }
+        }
+
+        outakeMotor.setVelocity(0);
+
+        telemetry.addData("Distance to April Tag", "%.2f", distanceToGoal);
+        telemetry.addData("Outtake Velocity", "%.2f", outakeVelocity);
         // ================= PID TUNING =================
 
         if (gamepad1.bWasPressed())
@@ -220,11 +264,9 @@ public class TurretAutoAlignOpmode extends OpMode {
         telemetry.addData("Left Limit", turret.LEFT_LIMIT);
         telemetry.addData("Right Limit", turret.RIGHT_LIMIT);
         telemetry.addLine("---------------------------------------");
-        telemetry.addData("Robot X", robotX);
-        telemetry.addData("Robot Y", robotY);
-        telemetry.addData("Distance", distanceToGoal);
 
 
-        telemetry.update();
+
     }
+
 }

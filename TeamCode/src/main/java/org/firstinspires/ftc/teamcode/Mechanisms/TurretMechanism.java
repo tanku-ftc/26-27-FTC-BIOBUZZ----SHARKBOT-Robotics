@@ -11,25 +11,31 @@ public class TurretMechanism {
 
     public DcMotorEx rotateMotor;
 
-    private double  kP = 0.03031;
+    private double kP = 0.03031;
     private double kD = 0.01001;
 
     private final double goalX = 0;
-    private  double lastError = 0;
+    private double lastError = 0;
     private final double angleTolerance = 3;
 
     private final double MAX_POWER = 0.8;
+    private final double WRAP_POWER = 0.71;
 
     private double power = 0.0;
 
     private final ElapsedTime timer = new ElapsedTime();
 
-
-    public int LEFT_LIMIT = -1700;
-    public int RIGHT_LIMIT = 1700;
+    public int LEFT_LIMIT = -850;
+    public int RIGHT_LIMIT = 850;
 
     private double filteredTx = 0;
     private static final double TX_FILTER = 0.5;
+
+    private boolean wrapping = false;
+    private int wrapTarget = 0;
+
+    private boolean wrapLocked = false;
+    private static final int WRAP_UNLOCK_DISTANCE = 100;
 
     public void init(HardwareMap hwMap) {
 
@@ -70,6 +76,26 @@ public class TurretMechanism {
         double deltaTime = timer.seconds();
         timer.reset();
 
+        if (wrapping) {
+
+            if (!rotateMotor.isBusy()) {
+
+                wrapping = false;
+                wrapLocked = true;
+
+                rotateMotor.setPower(0);
+                rotateMotor.setMode(
+                        DcMotor.RunMode.RUN_WITHOUT_ENCODER
+                );
+
+                lastError = 0;
+                return;
+            }
+
+            rotateMotor.setPower(WRAP_POWER);
+            return;
+        }
+
         if (llresult == null || !llresult.isValid()) {
             rotateMotor.setPower(0);
             filteredTx = 0;
@@ -77,7 +103,9 @@ public class TurretMechanism {
             return;
         }
 
-        filteredTx = TX_FILTER * llresult.getTx() + (1.0 - TX_FILTER) * filteredTx;
+        filteredTx =
+                TX_FILTER * llresult.getTx()
+                        + (1.0 - TX_FILTER) * filteredTx;
 
         double error = goalX - filteredTx;
 
@@ -86,33 +114,87 @@ public class TurretMechanism {
         double dTerm = 0;
 
         if (deltaTime > 0.01) {
-            dTerm = ((error - lastError) / deltaTime) * kD;
+            dTerm =
+                    ((error - lastError) / deltaTime) * kD;
         }
 
         if (Math.abs(error) < angleTolerance) {
+
             power = 0;
+
         } else {
+
             double ff = 0.03 * Math.signum(error);
 
-            power = Range.clip(pTerm + dTerm + ff, -MAX_POWER, MAX_POWER);
+            power = Range.clip(
+                    pTerm + dTerm + ff,
+                    -MAX_POWER,
+                    MAX_POWER
+            );
 
-            // Minimum power to overcome friction
             if (Math.abs(power) > 0) {
-                power = Math.copySign(Math.max(Math.abs(power), 0.08), power);
+                power = Math.copySign(
+                        Math.max(Math.abs(power), 0.08),
+                        power
+                );
             }
         }
 
-        // Encoder limits
-
         int position = rotateMotor.getCurrentPosition();
 
-        if (power > 0 && position >= RIGHT_LIMIT) {
-            power = 0;
+        if (wrapLocked) {
+
+            if (wrapTarget == RIGHT_LIMIT &&
+                    position < RIGHT_LIMIT - WRAP_UNLOCK_DISTANCE) {
+
+                wrapLocked = false;
+            }
+
+            if (wrapTarget == LEFT_LIMIT &&
+                    position > LEFT_LIMIT + WRAP_UNLOCK_DISTANCE) {
+
+                wrapLocked = false;
+            }
         }
 
-        if (power < 0 && position <= LEFT_LIMIT) {
-            power = 0;
+        if (!wrapLocked) {
+
+            if (power < 0 && position <= LEFT_LIMIT) {
+
+                wrapping = true;
+                wrapLocked = true;
+                wrapTarget = RIGHT_LIMIT;
+
+                rotateMotor.setTargetPosition(RIGHT_LIMIT);
+                rotateMotor.setMode(
+                        DcMotor.RunMode.RUN_TO_POSITION
+                );
+                rotateMotor.setPower(WRAP_POWER);
+
+                lastError = error;
+                return;
+            }
+
+            if (power > 0 && position >= RIGHT_LIMIT) {
+
+                wrapping = true;
+                wrapLocked = true;
+                wrapTarget = LEFT_LIMIT;
+
+                rotateMotor.setTargetPosition(LEFT_LIMIT);
+                rotateMotor.setMode(
+                        DcMotor.RunMode.RUN_TO_POSITION
+                );
+                rotateMotor.setPower(WRAP_POWER);
+
+                lastError = error;
+                return;
+            }
         }
+
+        rotateMotor.setMode(
+                DcMotor.RunMode.RUN_WITHOUT_ENCODER
+        );
 
         rotateMotor.setPower(power);
 
