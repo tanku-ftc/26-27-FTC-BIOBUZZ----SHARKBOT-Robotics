@@ -19,7 +19,7 @@ public class TurretMechanism {
     private final double angleTolerance = 3;
 
     private final double MAX_POWER = 0.8;
-    private final double WRAP_POWER = 0.71;
+    private final double WRAP_POWER = 0.9999999999;
 
     private double power = 0.0;
 

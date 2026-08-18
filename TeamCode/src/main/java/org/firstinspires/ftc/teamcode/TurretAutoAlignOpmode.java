@@ -42,6 +42,10 @@ public class TurretAutoAlignOpmode extends OpMode {
 
     private int stepIndex = 2;
 
+    private double outakeVelocityTest;
+
+    private double outakeAdjust = 0;
+
     public boolean isMagSwitchActive() {
         return !mgswitch.getState();
     }
@@ -184,7 +188,7 @@ public class TurretAutoAlignOpmode extends OpMode {
             distanceToGoal = getDistance(llresult.getTy());
 
             // Calculate speed from distance
-            outakeVelocity = 3 * distanceToGoal + 300;
+            outakeVelocity = 0.099391 * distanceToGoal + 135.10989;
 
         } else {
 
@@ -194,16 +198,29 @@ public class TurretAutoAlignOpmode extends OpMode {
             if (timeSinceTag < TAG_TIMEOUT_MS && lastTagTime != 0) {
 
                 // Keep using the last calculated distance/speed
-                outakeVelocity = 3 * distanceToGoal + 299.99959996767;
+                outakeVelocity = 0.099391 * distanceToGoal + 135.10989;
 
             } else {
 
                 // After 20 seconds with no tag, return to Y-intercept of 20
-                outakeVelocity = 300;
+                outakeVelocity = 135.10989;
             }
         }
 
-        outakeMotor.setVelocity(0);
+        outakeMotor.setVelocity(outakeVelocity);
+
+        if (gamepad1.aWasPressed()) {
+            outakeAdjust += 5;
+        }
+
+        if (gamepad1.yWasPressed()) {
+            outakeAdjust -= 5;
+        }
+
+        outakeVelocityTest = 0 + outakeAdjust;
+
+
+
 
         telemetry.addData("Distance to April Tag", "%.2f", distanceToGoal);
         telemetry.addData("Outtake Velocity", "%.2f", outakeVelocity);
@@ -223,17 +240,6 @@ public class TurretAutoAlignOpmode extends OpMode {
 
         if (gamepad1.dpadDownWasPressed())
             turret.setkD(turret.getkD() - stepSizes[stepIndex]);
-
-        // ================= LIMIT ADJUSTMENT =================
-
-        if (gamepad1.aWasPressed())
-            turret.RIGHT_LIMIT += 10;
-
-        if (gamepad1.yWasPressed())
-            turret.LEFT_LIMIT -= 10;
-
-        // ================= MAGNETIC SWITCH =================
-
 
         // ================= TELEMETRY =================
 
